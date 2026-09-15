@@ -1,10 +1,13 @@
-import os
 import subprocess
+from pathlib import Path
 from .base import Tool
 
 class BashTool(Tool):
     name="bash"
     description="Run shell command"
+
+    def __init__(self, workspace: Path):
+        self.workspace = workspace.resolve()
 
     def schema(self):
         schema = super().schema()
@@ -18,11 +21,8 @@ class BashTool(Tool):
         return schema
     
     def run(self, command):
-        dangerous=["rm -rf /","shutdown","reboot"]
-        if any(d in command for d in dangerous):
-            return "Error: Dangerous command blocked"
         try:
-            r=subprocess.run(command, shell=True, cwd=os.getcwd(),
+            r=subprocess.run(command, shell=True, cwd=self.workspace,
                            capture_output=True, text=True, errors="replace", timeout=120)
             out = (r.stdout + r.stderr).strip()
             return out[:50000] if out else "(no output)"
