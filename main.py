@@ -12,16 +12,33 @@ from repopilot.llm.client import LLMClient
 from repopilot.tools.bash import BashTool
 from repopilot.tools.files import EditFileTool, GlobTool, ReadFileTool, WriteFileTool
 from repopilot.tools.registry import ToolRegistry
+from repopilot.agent.context import ContextManager
+from repopilot.tools.planning import TodoTool, CompactTool
+from repopilot.tools.skills import SkillLoader
+from repopilot.tools.task import TaskTool
 
 
-def build_agent(workspace: Path) -> Agent:
+def build_agent(workspace: Path, child=False, llm=None) -> Agent:
     registry = ToolRegistry()
     for tool in (BashTool, ReadFileTool, WriteFileTool, EditFileTool, GlobTool):
         registry.register(tool(workspace))
     hooks = HookManager()
     hooks.register("PreToolUse", PermissionHook(workspace))
     hooks.register("PostToolUse", lambda name, args, output: print(f"[hook] Large output from {name}") if len(output) > 100_000 else None)
-    return Agent(LLMClient(workspace), registry, hooks)
+    todo = TodoTool()
+    skills = SkillLoader(workspace)
+    registry.register(todo)
+    registry.register(skills)
+    registry.register(CompactTool())
+    llm = llm or LLMClient(workspace)
+    llm.system_prompt += ("\nPlan multi-step work with todo_write and keep progress current. "
+                          "Load applicable skills before using their instructions.\nSkills:\n" + skills.catalog())
+    if child:
+        llm.system_prompt += "\nYou are a subagent. Complete only the delegated task and return a concise factual summary."
+    else:
+        registry.register(TaskTool(lambda: build_agent(workspace, child=True)))
+    context = ContextManager(workspace, llm.summarize, todo.render)
+    return Agent(llm, registry, hooks, context, max_turns=30 if child else 100)
 
 
 def main() -> None:
@@ -45,7 +62,11 @@ def main() -> None:
             break
         agent.hooks.trigger("UserPromptSubmit", query)
         history.append({"role": "user", "content": query})
-        response = agent.run(history)
+        try:
+            response = agent.run(history, query)
+        except Exception as exc:
+            print(f"Task failed: {exc}")
+            continue
         if response:
             print(response)
         print()
