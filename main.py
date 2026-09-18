@@ -19,6 +19,7 @@ from repopilot.tools.task import TaskTool
 from repopilot.runtime.memory import MemoryStore
 from repopilot.runtime.tasks import TaskStore
 from repopilot.runtime.background import BackgroundManager
+from repopilot.runtime.scheduler import Scheduler
 from repopilot.tools.service import ServiceTool
 
 
@@ -48,6 +49,10 @@ def build_agent(workspace: Path, child=False, llm=None) -> Agent:
     tasks = TaskStore(workspace)
     for tool in tasks.tools():
         registry.register(tool)
+    scheduler = Scheduler(workspace)
+    if not child:
+        for tool in scheduler.tools():
+            registry.register(tool)
     registry.register(ServiceTool("recall_memory", "Recall relevant persistent repository memories.", memory.recall, {"query": {"type": "string"}}, ["query"]))
     registry.register(ServiceTool("save_memory", "Save explicit reusable knowledge, never temporary task instructions.", memory.save,
                                  {k: {"type": "string"} for k in ("name", "type", "description", "body", "scope")}, ["name", "type", "description", "body", "scope"]))
@@ -55,6 +60,7 @@ def build_agent(workspace: Path, child=False, llm=None) -> Agent:
     agent.memory = memory
     agent.tasks = tasks
     agent.background = background
+    agent.scheduler = scheduler
     agent.event_sources.append(background.collect)
     return agent
 
