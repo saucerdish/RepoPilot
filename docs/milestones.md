@@ -1,5 +1,9 @@
 # 实现顺序与依赖
 
+## s14 MCP
+
+实现真实 stdio JSON-RPC：initialize、initialized、分页 tools/list、tools/call、超时和进程清理。通过 CLI `--mcp-config` 显式提供宿主 JSON 配置，格式为 `{ "docs": { "command": ["python", "server.py"], "allow_tools": ["search"] } }`。连接启动本地程序需确认；已发现工具统一命名 mcp__server__tool，拒绝名称碰撞与长度超限。allow_tools 是宿主精确授权名单，其他外部工具确认，服务端 hint 不决定权限。当前不支持 HTTP、采样、资源订阅等完整 MCP 能力。传输实现参考官方规范 https://modelcontextprotocol.io/specification/2025-11-25/basic/transports。
+
 ## s13 团队与工作目录
 
 持久队友线程在 WORK、IDLE、AWAITING_PLAN、STOPPED 间转换，消息保存在 SQLite 收件箱。空闲队友检查消息后扫描并原子认领 ready task，一名 owner 只能持有一个进行中任务。结果、空闲和错误分开投递；不完整任务释放后停止该队友，避免反复抢占。计划请求带 request_id、任务 ID 和版本，旧任务审批无效；待审批时禁止 shell 和写操作。工作目录绑定任务，worktree 使用 codex/ 分支，创建失败不删除残留。移除及合并由用户检查后手动处理，不提供破坏性清理工具。队友线程不读取终端审批输入。

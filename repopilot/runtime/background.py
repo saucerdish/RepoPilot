@@ -22,6 +22,8 @@ class BackgroundManager:
                 os.killpg(process.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
+        if process.poll() is None:
+            process.kill()
 
     def execute(self, command, cwd, timeout=120):
         options = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {"start_new_session": True}

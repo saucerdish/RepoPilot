@@ -21,10 +21,11 @@ from repopilot.runtime.tasks import TaskStore
 from repopilot.runtime.background import BackgroundManager
 from repopilot.runtime.scheduler import Scheduler
 from repopilot.runtime.teams import TeamManager
+from repopilot.runtime.mcp import MCPManager
 from repopilot.tools.service import ServiceTool
 
 
-def build_agent(workspace: Path, child=False, llm=None, owner="lead", state_workspace=None) -> Agent:
+def build_agent(workspace: Path, child=False, llm=None, owner="lead", state_workspace=None, mcp_servers=None) -> Agent:
     state_workspace = state_workspace or workspace
     registry = ToolRegistry()
     background = BackgroundManager()
@@ -64,6 +65,11 @@ def build_agent(workspace: Path, child=False, llm=None, owner="lead", state_work
     agent.background = background
     agent.scheduler = scheduler
     agent.event_sources.append(background.collect)
+    mcp = MCPManager(workspace, registry, mcp_servers)
+    if not child:
+        registry.register(ServiceTool("connect_mcp", "Connect a host-configured MCP server and discover tools.", mcp.connect, {"name": {"type": "string"}}, ["name"]))
+    hooks.register("PreToolUse", mcp.permission(PermissionHook.ask_user if owner == "lead" else lambda *args: False))
+    agent.mcp = mcp
     if not child:
         teams = TeamManager(workspace, tasks, lambda cwd, name: build_agent(cwd, child=True, owner=name, state_workspace=workspace))
         for tool in teams.tools():
@@ -78,13 +84,16 @@ def build_agent(workspace: Path, child=False, llm=None, owner="lead", state_work
 def main() -> None:
     parser = argparse.ArgumentParser(description="Software engineering agent for a Git repository")
     parser.add_argument("repository", nargs="?", default=".", help="path to the target Git repository")
+    parser.add_argument("--mcp-config", type=Path, help="host-approved JSON server configuration")
     args = parser.parse_args()
     workspace = Path(args.repository).resolve()
     if not workspace.is_dir() or not (workspace / ".git").exists():
         parser.error(f"not a Git repository: {workspace}")
 
     load_dotenv()
-    agent = build_agent(workspace)
+    import json
+    mcp_servers = json.loads(args.mcp_config.read_text(encoding="utf-8")) if args.mcp_config else {}
+    agent = build_agent(workspace, mcp_servers=mcp_servers)
     print(f"RepoPilot: {workspace}\nEnter a task. Type q to quit.\n")
     history = []
     while True:
@@ -113,6 +122,7 @@ def main() -> None:
         print()
     agent.background.close()
     agent.teams.close()
+    agent.mcp.close()
 
 
 if __name__ == "__main__":
