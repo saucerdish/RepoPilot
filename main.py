@@ -22,6 +22,7 @@ from repopilot.runtime.teams import TeamManager
 from repopilot.runtime.mcp import MCPManager
 from repopilot.tools.service import ServiceTool
 from repopilot.runtime.host import AgentHost
+from repopilot.runtime.workflow import WorkflowRuntime, review_changes
 
 
 def build_agent(workspace: Path, child=False, llm=None, owner="lead", state_workspace=None, mcp_servers=None, approval=None, allow_commands=()) -> Agent:
@@ -85,6 +86,18 @@ def build_agent(workspace: Path, child=False, llm=None, owner="lead", state_work
             registry.register(tool)
         agent.teams = teams
         agent.event_sources.append(lambda: teams.bus.drain("lead"))
+        def workflow_runner(prompt):
+            worker = build_agent(workspace, child=True, owner="workflow", state_workspace=state_workspace, allow_commands=allow_commands)
+            try:
+                return worker.run([{"role": "user", "content": prompt}], prompt)
+            finally:
+                worker.background.close()
+                worker.mcp.close()
+        workflows = WorkflowRuntime(workspace, workflow_runner)
+        workflows.register("review-changes", "Audit and verify supplied changes.", review_changes,
+                           {"type": "object", "properties": {"changes": {"type": "string", "minLength": 1}}, "required": ["changes"], "additionalProperties": False})
+        registry.register(workflows.tool())
+        agent.workflows = workflows
     if owner != "lead":
         llm.system_prompt += f"\nYour host identity is {owner}. Complete your assigned task using complete_task with its exact ID, only after validation."
     return agent
