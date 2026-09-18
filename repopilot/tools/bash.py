@@ -6,8 +6,9 @@ class BashTool(Tool):
     name="bash"
     description="Run shell command"
 
-    def __init__(self, workspace: Path):
+    def __init__(self, workspace: Path, background=None):
         self.workspace = workspace.resolve()
+        self.background = background
 
     def schema(self):
         schema = super().schema()
@@ -18,14 +19,19 @@ class BashTool(Tool):
             }
         }
         schema["function"]["parameters"]["required"] = ["command"]
+        schema["function"]["parameters"]["properties"]["run_in_background"] = {"type": "boolean"}
         return schema
     
-    def run(self, command):
+    def run(self, command, run_in_background=False):
         try:
+            if self.background:
+                if run_in_background is True:
+                    return self.background.start(command, self.workspace)
+                return self.background.execute(command, self.workspace)
             r=subprocess.run(command, shell=True, cwd=self.workspace,
                            capture_output=True, text=True, errors="replace", timeout=120)
             out = (r.stdout + r.stderr).strip()
-            return out[:50000] if out else "(no output)"
+            return f"Command: {command}\nExit code: {r.returncode}\n{out}"
         except subprocess.TimeoutExpired:
             return "Error: Timeout (120s)"
         except (FileNotFoundError, OSError) as e:

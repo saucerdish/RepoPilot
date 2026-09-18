@@ -18,13 +18,16 @@ from repopilot.tools.skills import SkillLoader
 from repopilot.tools.task import TaskTool
 from repopilot.runtime.memory import MemoryStore
 from repopilot.runtime.tasks import TaskStore
+from repopilot.runtime.background import BackgroundManager
 from repopilot.tools.service import ServiceTool
 
 
 def build_agent(workspace: Path, child=False, llm=None) -> Agent:
     registry = ToolRegistry()
+    background = BackgroundManager()
     for tool in (BashTool, ReadFileTool, WriteFileTool, EditFileTool, GlobTool):
         registry.register(tool(workspace))
+    registry.register(BashTool(workspace, background))
     hooks = HookManager()
     hooks.register("PreToolUse", PermissionHook(workspace))
     hooks.register("PostToolUse", lambda name, args, output: print(f"[hook] Large output from {name}") if len(output) > 100_000 else None)
@@ -51,6 +54,8 @@ def build_agent(workspace: Path, child=False, llm=None) -> Agent:
     agent = Agent(llm, registry, hooks, context, max_turns=30 if child else 100)
     agent.memory = memory
     agent.tasks = tasks
+    agent.background = background
+    agent.event_sources.append(background.collect)
     return agent
 
 
@@ -90,6 +95,7 @@ def main() -> None:
         except Exception as exc:
             print(f"Memory extraction skipped: {type(exc).__name__}")
         print()
+    agent.background.close()
 
 
 if __name__ == "__main__":

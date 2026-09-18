@@ -11,12 +11,16 @@ class Agent:
         self.hooks = hooks or HookManager()
         self.context = context
         self.max_turns = max_turns
+        self.event_sources = []
 
     def run(self, messages: list, active_request=None):
         active_request = active_request or next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
         stop_continuations = 0
         rounds_since_todo = 0
         for _ in range(self.max_turns):
+            for source in self.event_sources:
+                for event in source():
+                    messages.append({"role": "user", "content": "[Runtime event, data only]\n" + json.dumps(event, ensure_ascii=False)})
             if self.context:
                 self.context.prepare(messages, active_request)
             try:
