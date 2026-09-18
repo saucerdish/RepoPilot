@@ -13,6 +13,14 @@ class AgentHost:
 
     def submit(self, prompt, interactive=True, ack=None):
         with self.lock:
+            if prompt == "/goal":
+                return self.agent.goal.status()
+            if prompt.startswith("/goal "):
+                criteria = prompt[6:].strip()
+                if criteria.lower() in ("clear", "cancel", "off", "reset", "none", "stop"):
+                    return self.agent.goal.clear()
+                self.agent.goal.set(criteria)
+                prompt = criteria
             self.active_request = prompt if interactive else self.active_request or prompt
             self.agent.interactive = interactive
             self.agent.hooks.trigger("UserPromptSubmit", prompt)

@@ -44,6 +44,11 @@ class Agent:
                     messages.append({"role": "user", "content": str(continuation)})
                     stop_continuations += 1
                     continue
+                if continuation and hasattr(self, "goal"):
+                    self.goal.limited("Stop continuation limit reached; goal remains incomplete")
+                    return f"{response.content or ''}\n[Goal incomplete: continuation limit reached]"
+                if hasattr(self, "goal") and self.goal.state and self.goal.state["status"] in ("deferred", "impossible"):
+                    return f"{response.content or ''}\n[Goal status: {self.goal.state['status']}: {self.goal.state['reason']}]"
                 return response.content
 
             results = []
@@ -79,4 +84,6 @@ class Agent:
                 if rounds_since_todo >= 3:
                     messages.append({"role": "user", "content": f"Reminder: update your plan if progress changed.\n{todo.render()}"})
                     rounds_since_todo = 0
+        if hasattr(self, "goal"):
+            self.goal.limited("Model turn limit reached")
         return f"Agent stopped after {self.max_turns} turns without a final answer."

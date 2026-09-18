@@ -14,4 +14,6 @@ class ScriptedLLM:
         return "state summary"
 
     def decide(self, instruction, text):
+        if "Judge whether" in instruction:
+            return {"ok": False, "impossible": False, "reason": "Missing evidence"}
         return {"records": []}

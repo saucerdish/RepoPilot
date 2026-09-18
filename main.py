@@ -23,6 +23,7 @@ from repopilot.runtime.mcp import MCPManager
 from repopilot.tools.service import ServiceTool
 from repopilot.runtime.host import AgentHost
 from repopilot.runtime.workflow import WorkflowRuntime, review_changes
+from repopilot.runtime.goal import GoalController
 
 
 def build_agent(workspace: Path, child=False, llm=None, owner="lead", state_workspace=None, mcp_servers=None, approval=None, allow_commands=()) -> Agent:
@@ -98,6 +99,11 @@ def build_agent(workspace: Path, child=False, llm=None, owner="lead", state_work
                            {"type": "object", "properties": {"changes": {"type": "string", "minLength": 1}}, "required": ["changes"], "additionalProperties": False})
         registry.register(workflows.tool())
         agent.workflows = workflows
+        pending = lambda: background.pending() or any(s["status"] in ("WORK", "AWAITING_PLAN") for s in teams.list())
+        goal = GoalController(workspace, llm.decide, pending)
+        hooks.register("Stop", goal.stop)
+        agent.goal = goal
+        llm.system_prompt += "\nGoals are checked independently. Preserve concrete commands, exit codes and test results in the conversation. Never claim validation without evidence."
     if owner != "lead":
         llm.system_prompt += f"\nYour host identity is {owner}. Complete your assigned task using complete_task with its exact ID, only after validation."
     return agent
