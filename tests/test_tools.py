@@ -33,6 +33,8 @@ class FileToolsTest(unittest.TestCase):
             write.run("a.txt", "same same")
             self.assertIn("found 2", edit.run("a.txt", "same", "new"))
             self.assertEqual((workspace / "a.txt").read_text(), "same same")
+            self.assertIn("metadata", write.run(".git/config", "bad"))
+            self.assertIn("metadata", write.run(".repopilot/state.sqlite3", "bad"))
 
 
 class AgentDispatchTest(unittest.TestCase):

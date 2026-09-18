@@ -1,75 +1,95 @@
 # RepoPilot
 
-RepoPilot 是面向真实 Git 仓库的软件工程 Agent 学习项目，按 *learn-claude-code* 的章节逐步实现。目前集成 s01–s08：工具循环、权限、Hook、任务清单、子 Agent、技能加载和上下文压缩。长期目标是让 Agent 理解仓库、规划任务、搜索与修改代码、运行测试和诊断错误，并加入 MCP 与 Agent Evaluation。
+面向真实 Git 仓库的软件工程 Agent 学习项目。基于 *learn-claude-code* s01–s17 的机制，构建从仓库理解、任务规划、代码修改到测试反馈与目标判断的执行闭环。它是可运行、可测试的学习型 Harness，尚不是隔离完善的生产环境执行平台。
 
-## 运行
+## 快速开始
 
-需要 Python 3.10+。安装依赖：`pip install -r requirements.txt`。参考 `.env.example` 设置 `OPENAI_API_KEY` 和 `MODEL_ID`，可选设置 `OPENAI_BASE_URL`；也可以放在本地 `.env`。运行：
+需要 Python 3.10+ 和 Git。推荐建立隔离环境：
 
-```sh
-python main.py D:/path/to/git/repository
+```powershell
+python -m venv .venv
+.venv/Scripts/python.exe -m pip install -r requirements.txt
+Copy-Item .env.example .env
 ```
 
-省略路径时使用当前目录。输入任务后，Agent 会把模型的工具调用按原始顺序执行；输入 `q` 退出。可以先试“阅读 README，找出测试命令”，再试“找到相关文件并修复失败测试”。任务结束后建议查看 `git diff`。
+填写 `.env` 中的 `OPENAI_API_KEY`、`MODEL_ID`，可选 `OPENAI_BASE_URL`。采用 OpenAI-compatible Chat Completions，模型应支持工具调用和 JSON 对象输出。请求有 60 秒默认超时、有限重试，可设置备用模型。现有环境变量优先于 `.env`。
 
-无需模型 API 的本地验证：
-
-```sh
-python -m unittest discover -s tests -v
+```powershell
+.venv/Scripts/python.exe main.py D:/path/to/repository
+# 或在项目根目录使用 python -m repopilot
 ```
 
-## 目前的工具
+目标必须是 Git 仓库。省略路径使用当前目录；输入任务开始工作，`q` 退出。所有 shell 调用默认需要确认，审批只回答 `y` 或 `yes` 才放行。只有前台用户轮次可以确认；队友、定时任务和后台事件轮次默认拒绝需确认的工具。
 
-`bash` 在目标仓库目录执行命令；`read_file` 读 UTF-8 文件；`write_file` 创建或覆盖文件；`edit_file` 只在旧文本恰好出现一次时替换；`glob` 按模式查找文件（`**` 表示递归）。文件工具把路径解析到目标仓库内，越界路径会被拒绝。
+单次执行或异步执行需要提前授权**完全相同**的命令：
 
-## s03：执行前权限判断
-
-权限策略在 [PermissionHook](repopilot/agent/permission.py) 中实现，并作为 `PreToolUse` 注册。硬拒绝规则先处理明显危险的 shell 命令，例如 `rm -rf /`、`shutdown` 和 `mkfs`；删除命令（`rm`、`del` 等）、`chmod 777` 等操作会暂停并询问用户，默认拒绝。文件工具的仓库外路径直接拒绝，因为这些工具本身也不支持越界访问。被拒绝的调用不会执行，但拒绝原因会作为工具结果回传给模型。
-
-这是学习用的规则匹配策略，**不是 shell 沙箱**。命令可能通过其他程序、拼接方式或子进程绕开简单的字符串规则。现阶段只应在可信仓库中运行；更严格的 shell 隔离和完整权限策略仍需后续实现。
-
-## s04：类封装的 Hook
-
-[HookManager](repopilot/agent/hooks.py) 为每个 Agent 实例保存一个事件到回调列表的映射，用 `register(event, callback)` 注册、`trigger(event, *args)` 触发。不同 Agent 的 Hook 不共享状态。事件包括：
-
-| 事件 | 触发位置 | 返回值作用 |
-| --- | --- | --- |
-| `UserPromptSubmit` | 用户输入后、模型调用前 | 当前忽略返回值，适合记录或校验输入 |
-| `PreToolUse` | 每个工具调用前 | 第一个非 `None` 返回值阻止执行，并成为工具结果 |
-| `PostToolUse` | 工具实际执行后 | 当前忽略返回值，适合日志或输出检查 |
-| `Stop` | 模型不再调用工具、Agent 即将结束时 | 非空返回值作为新的用户消息让 Agent 继续；每次任务最多续行三次 |
-
-例如新增一个执行后日志，不需要改 Agent 循环：
-
-```python
-hooks.register("PostToolUse", lambda name, args, output: print(name, len(output)))
+```powershell
+.venv/Scripts/python.exe main.py . --task "运行项目测试并报告结果" --allow-command "python -m unittest discover -s tests -v"
 ```
 
-当前启动流程在 [main.py](main.py) 注册权限 Hook 与大输出提示 Hook。你可以继续在 `build_agent()` 中注册自己的 Hook。`PreToolUse` 回调接收 `(tool_name, args)`，`PostToolUse` 接收 `(tool_name, args, output)`，`Stop` 接收消息历史。Hook 可以用类实例（如 `PermissionHook`）或普通函数实现。
+`--task` 结束后立即关闭运行时，不等待未来的定时任务。交互模式会在空闲时自动接收后台与团队事件并触发下一轮。退出会停止队友和受管理的 shell 进程。
 
-## s05–s08 新能力
-
-| 章节 | 工具 / 类 | 行为 |
-| --- | --- | --- |
-| s05 | `todo_write` / `TodoTool` | 最多 20 项，最多一项进行中；三轮未更新时提醒模型 |
-| s06 | `task` / `TaskTool` | 同步运行独立历史的子 Agent，只返回最终文本，不支持递归委派 |
-| s07 | `load_skill` / `SkillLoader` | 启动时只把技能目录放入系统提示，全文按名称加载 |
-| s08 | `compact` / `ContextManager` | 大输出转存、历史归档、旧结果缩短和模型摘要 |
-
-完整模块关系、设计取舍和手动实验见 [架构说明](docs/architecture.md)。
-
-技能从**目标仓库**的 `skills/*/SKILL.md` 扫描。本仓库提供 `repository-workflow` 示例；对其他仓库运行时，需要在那个仓库添加自己的技能。元数据当前支持简单单行 `name:` 和 `description:`，不支持完整 YAML 语法。
-
-运行示例：
+## 按验收条件持续工作
 
 ```text
-先使用 repository-workflow 技能，列出计划，找出本项目测试命令并运行测试。
-用 task 调查工具注册流程，只返回关键文件与结论，然后由主 Agent 验证。
-在完成当前阶段后使用 compact，再继续处理剩余任务。
+/goal 修复登录模块，直到指定测试命令退出码为 0，保持已有接口且不修改测试文件
+/goal
+/goal clear
 ```
 
-原始记录保存到目标仓库 `.repopilot/runs/<run-id>/`，可通过文件工具重新读取。对其他仓库运行时，建议把 `.repopilot/` 加入那个仓库的 `.gitignore`。这些记录可能包含仓库代码和工具输出，不会自动删除。当前计划仅存在于进程内；退出重启后不会恢复计划，持久记忆仍属于 s09 后续工作。
+设置目标立即启动任务。独立判断器只检查当前会话的工具证据，不读取仓库；没有证据不会可靠地证明完成。后台结果未到时延后判断，结果到达后继续。达到主循环 100 轮或 Stop 连续续行三次时返回控制权，并保留未完成目标。判断器错误与不可能完成也会明确记录。目标状态持久化，但完整模型会话不自动恢复，重启后需重新提供或运行验证。
 
-## 后续方向
+## 能力与依赖
 
-下一阶段是 s09 的持久记忆，然后完善仓库搜索、测试诊断、MCP 工具和可重复的 Agent 评测。当前测试使用临时仓库和模拟模型验证执行机制，尚未衡量真实模型完成复杂仓库任务的成功率。
+| 阶段 | 核心能力 |
+| --- | --- |
+| s01–s04 | Agent Loop、五个基础工具、权限策略、类封装 HookManager |
+| s05–s08 | 任务清单、一次性子 Agent、技能按需加载、可恢复上下文管理 |
+| s09 | 持久记忆：显式写入、相关召回、自动提取与事务整理 |
+| s10 | 持久任务图、环检测、依赖检查与原子认领 |
+| s11 | 显式后台命令、退出码与完成通知、进程清理 |
+| s12 | 本地五字段 Cron、持久待交付状态与模型接收确认 |
+| s13 | 持久队友、消息收件箱、计划审批、任务绑定 worktree |
+| s14 | 真实 stdio MCP 连接、动态工具发现与宿主授权 |
+| s15 | 串行会话宿主、事件唤醒、统一权限与模型错误恢复 |
+| s16 | 注册工作流、并行/流水线、结构校验与 journal 续跑 |
+| s17 | 独立目标判断、延后检查、持续推进和有界退出 |
+
+实现按依赖组织，非简单复制章节脚本：任务图先于团队，后台与调度分别实现后在宿主集成；MCP 从基础工具独立扩展；工作流和目标判断可以分别使用。详见 [阶段说明](docs/milestones.md)、[运行时架构](docs/runtime.md)、[运行与排错](docs/operations.md)、[评测说明](docs/evaluation.md) 和 [s01–s08 基础设计](docs/architecture.md)。
+
+## 技能、团队、MCP 与工作流
+
+技能从**目标仓库** `skills/*/SKILL.md` 扫描，系统提示只加入名称和描述；模型通过 `load_skill` 读取全文。本仓库含 `repository-workflow` 示例，元数据支持简单单行格式。
+
+复杂任务可先创建 task 节点，取得实际 ID，再添加依赖边，然后启动 ready task 的队友。一次性 `task` 只返回总结；持久队友保持身份和消息历史，在 WORK/IDLE 间切换。计划审批绑定任务版本，过期审批无效。worktree 分离工作目录和 codex/ 分支，不自动合并、删除或推送任务分支。
+
+MCP 通过**宿主显式提供**的 JSON 文件配置，使用 `--mcp-config path/to/mcp.json`：
+
+```json
+{
+  "docs": {
+    "command": ["python", "D:/tools/docs_server.py"],
+    "allow_tools": ["search"]
+  }
+}
+```
+
+`connect_mcp` 启动已配置程序并发现工具；连接需确认，未精确列入 allow_tools 的外部工具也需确认。不要把任意仓库提供的命令当作可信宿主配置。当前 MCP 支持 stdio 工具路径，不支持 HTTP、采样或资源订阅；协议依据 [官方 stdio 规范](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)。
+
+内置 `Workflow(name="review-changes", args={"changes": "实际 diff 内容"})` 先审计再验证两个维度，返回结构化发现、运行 ID 与事件。使用相同名称、参数和 `resume_from_run_id` 可续跑。模型只能提供参数，不能生成执行脚本。
+
+## 测试与 Agent Evaluation
+
+```powershell
+python -m unittest discover -s tests -v
+python -m repopilot.evaluation --mode demo
+python -m repopilot.evaluation --mode live --output .repopilot/eval-live.json
+```
+
+`demo` 是固定脚本验证 Harness：在三个临时 Git 仓库中，先证实测试失败，执行修改，再独立重跑测试，检查测试文件未变和修改范围。它的通过率**不是模型完成率**。`live` 使用现有模型配置完成相同小任务，可以通过 `--case` 选择单个样例；仅能作为冒烟评测，不能替代复杂仓库基准或对照实验。报告记录退出码、修改文件、目标状态、耗时和错误。GitHub Actions 在 Windows/Linux 和 Python 3.10/3.12 上运行无密钥测试与 demo。
+
+## 数据与边界
+
+持久数据在目标仓库 `.repopilot/`：SQLite 保存记忆、任务、调度、消息、工作流 journal 和目标状态；runs 保存工具原文与历史归档，workflows 保存快照，worktrees 保存任务 checkout。对其他仓库运行时，应将该目录加入 `.gitignore`。记录可能包含代码与命令输出，不自动删除。
+
+文件工具限制仓库内路径并禁止覆盖 Git 和运行时元数据。shell、子 Agent、队友、MCP 子进程和 worktree **不是安全沙箱**，前台授权命令可访问宿主权限允许的资源。Cron 只在进程运行时检查到期，不补跑停机期间错过的分钟，持久交付采用至少一次语义；多个宿主同时运行同一仓库的定时任务仍可能重复执行。计划闸门不替代用户审批。摘要、记忆提取和目标判断均可能受模型误判影响，需要检查真实测试结果与 Git diff。

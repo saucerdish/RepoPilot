@@ -5,6 +5,26 @@ from repopilot.runtime.workflow import WorkflowRuntime, review_changes, validate
 
 
 class WorkflowTests(unittest.TestCase):
+    def test_partial_failure_resume_does_not_repeat_successful_step(self):
+        with tempfile.TemporaryDirectory() as directory:
+            calls = []
+            broken = [True]
+            def runner(prompt):
+                calls.append(prompt)
+                if "second" in prompt and broken[0]:
+                    raise RuntimeError("temporary worker failure")
+                return "result"
+            runtime = WorkflowRuntime(Path(directory), runner)
+            async def workflow(ctx, args):
+                first = await ctx.agent("first", label="first")
+                return await ctx.agent("second:" + first, label="second")
+            runtime.register("resume", "resume", workflow, {"type": "object"})
+            first = runtime.run("resume", {})
+            self.assertEqual(first["status"], "failed")
+            broken[0] = False
+            second = runtime.run("resume", {}, first["run_id"])
+            self.assertEqual(second["status"], "completed")
+            self.assertEqual(calls.count("first"), 1)
     def test_resume_reuses_semantic_keys(self):
         with tempfile.TemporaryDirectory() as directory:
             calls = []

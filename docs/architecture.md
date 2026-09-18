@@ -1,5 +1,7 @@
 # RepoPilot s01–s08 架构与学习说明
 
+这是基础阶段的设计记录。当前 s01–s17 集成架构见 [runtime.md](runtime.md)，最新入口参数和权限行为以根目录 README 为准。
+
 ## 执行路径
 
 `main.py` 检查目标 Git 仓库，创建工具注册表、独立 HookManager、模型客户端和 ContextManager。用户提交后触发 `UserPromptSubmit`，再把明确的当前请求传给 `Agent.run()`。

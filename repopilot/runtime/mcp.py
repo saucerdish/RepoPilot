@@ -50,6 +50,9 @@ class StdioClient:
             self.write({"jsonrpc": "2.0", "id": identifier, "method": method, "params": params})
             deadline = time.monotonic() + self.timeout
             while True:
+                if time.monotonic() > deadline:
+                    self.close()
+                    raise TimeoutError("MCP request deadline exceeded")
                 try:
                     message = self.inbox.get(timeout=max(.001, deadline - time.monotonic()))
                 except queue.Empty:

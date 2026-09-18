@@ -165,6 +165,10 @@ class TeamManager:
                     state["wake"].wait(.5)
                     state["wake"].clear()
                     continue
+                if state["gate"] == "rejected" and not inbox:
+                    state["wake"].wait(.5)
+                    state["wake"].clear()
+                    continue
                 state["status"] = "WORK"
                 result = state["agent"].run(state["history"], task["description"] or task["subject"])
                 if state["gate"] == "pending":
@@ -188,7 +192,7 @@ class TeamManager:
             if state["agent"]:
                 state["agent"].background.close()
             state["status"] = "STOPPED"
-            for record in self.protocols.values():
+            for record in list(self.protocols.values()):
                 if record["name"] == name and record["type"] == "shutdown" and record["status"] == "pending":
                     record["status"] = "approved"
                     self.bus.send(name, "lead", "Shutdown acknowledged", "shutdown_response", request_id=record["request_id"])

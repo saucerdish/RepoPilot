@@ -11,7 +11,7 @@ class AgentHost:
         self.lock = threading.RLock()
         self.active_request = ""
 
-    def submit(self, prompt, interactive=True, ack=None):
+    def submit(self, prompt, interactive=True, ack=None, scheduled=False):
         with self.lock:
             if prompt == "/goal":
                 return self.agent.goal.status()
@@ -21,7 +21,8 @@ class AgentHost:
                     return self.agent.goal.clear()
                 self.agent.goal.set(criteria)
                 prompt = criteria
-            self.active_request = prompt if interactive else self.active_request or prompt
+            previous_request = self.active_request
+            self.active_request = prompt if interactive or scheduled else self.active_request or prompt
             self.agent.interactive = interactive
             self.agent.hooks.trigger("UserPromptSubmit", prompt)
             self.history.append({"role": "user", "content": prompt})
@@ -45,6 +46,8 @@ class AgentHost:
             finally:
                 self.agent.after_model = None
                 self.agent.interactive = False
+                if scheduled:
+                    self.active_request = previous_request
 
     def poll(self):
         with self.lock:
@@ -53,7 +56,7 @@ class AgentHost:
             outputs = []
             for job in due:
                 try:
-                    outputs.append(self.submit("[Scheduled] " + job["prompt"], interactive=False, ack=lambda job=job: self.agent.scheduler.ack(job["id"])))
+                    outputs.append(self.submit("[Scheduled] " + job["prompt"], interactive=False, scheduled=True, ack=lambda job=job: self.agent.scheduler.ack(job["id"])))
                 except Exception as exc:
                     outputs.append(f"Scheduled delivery failed: {type(exc).__name__}; task retained for retry")
             events = []

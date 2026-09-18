@@ -7,6 +7,7 @@ from repopilot.tools.service import ServiceTool
 
 class TaskStore:
     def __init__(self, workspace):
+        self.workspace = workspace.resolve()
         self.db = Database(workspace)
         with self.db.connect() as conn:
             conn.execute("CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, record TEXT NOT NULL)")
@@ -68,6 +69,11 @@ class TaskStore:
             active = [json.loads(row["record"]) for row in conn.execute("SELECT record FROM tasks")]
             if any(t["owner"] == owner and t["status"] == "in_progress" for t in active):
                 raise ValueError("Owner already has an active task")
+            if record["cwd"]:
+                from pathlib import Path
+                cwd = Path(record["cwd"]).resolve()
+                if not cwd.is_relative_to(self.workspace / ".repopilot" / "worktrees") or not (cwd / ".git").exists():
+                    raise ValueError("Invalid task worktree binding")
             if any(self._load(conn, dep)["status"] != "completed" for dep in record["blockedBy"]):
                 raise ValueError("Task has incomplete dependencies")
             record.update(status="in_progress", owner=owner)

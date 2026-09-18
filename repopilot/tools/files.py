@@ -7,10 +7,12 @@ class WorkspaceTool(Tool):
     def __init__(self, workspace: Path):
         self.workspace = workspace.resolve()
 
-    def safe_path(self, path: str) -> Path:
+    def safe_path(self, path: str, write=False) -> Path:
         target = (self.workspace / path).resolve()
         if not target.is_relative_to(self.workspace):
             raise ValueError(f"Path escapes workspace: {path}")
+        if write and any(part in (".git", ".repopilot") for part in target.relative_to(self.workspace).parts):
+            raise ValueError("Agent file tools cannot overwrite Git or runtime metadata")
         return target
 
 
@@ -55,7 +57,7 @@ class WriteFileTool(WorkspaceTool):
 
     def run(self, path: str, content: str) -> str:
         try:
-            target = self.safe_path(path)
+            target = self.safe_path(path, write=True)
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content, encoding="utf-8")
             return f"Wrote {len(content)} characters to {path}"
@@ -83,7 +85,7 @@ class EditFileTool(WorkspaceTool):
         try:
             if not old_text:
                 return "Error: old_text must not be empty"
-            target = self.safe_path(path)
+            target = self.safe_path(path, write=True)
             content = target.read_text(encoding="utf-8")
             count = content.count(old_text)
             if count != 1:

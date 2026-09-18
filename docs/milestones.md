@@ -32,7 +32,7 @@ AgentHost 用同一锁串行处理用户请求、Cron prompt、团队和后台�
 
 任务记录包含状态、owner、blockedBy 和可选工作目录。先创建节点获得真实 ID，再添加依赖；拒绝环、缺失依赖及认领后的结构修改。SQLite BEGIN IMMEDIATE 保证并发认领只有一人成功，完成动作校验宿主绑定的 owner。六个任务工具已接入 Agent；任务清单仍用于单轮步骤，任务图用于跨会话和协作。
 
-当前 s01–s08 已完成。后续按依赖实现：s09 Memory → s10 Task DAG → s11 Background → s12 Cron → s13 Teams/worktree；s14 MCP 从基础工具与权限独立扩展；s15 集成所有服务 → s16 Workflow → s17 Goal。Workflow 与 Goal 可独立使用，集成时前者结果作为后者证据。
+当前 s01–s17 已集成。实际实现顺序：s09 Memory → s10 Task DAG → s11 Background → s12 Cron → s13 Teams/worktree；s14 MCP 从基础工具与权限独立扩展；s15 集成所有服务 → s16 Workflow → s17 Goal。Workflow 与 Goal 可独立使用，集成时前者结果作为后者证据。每个新增阶段分别验证、提交和推送；最终收尾提交补充评测、CI 和恢复机制回归测试。
 
 ## s09 持久记忆
 
