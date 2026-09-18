@@ -1,5 +1,9 @@
 # 实现顺序与依赖
 
+## s15 集成宿主
+
+AgentHost 用同一锁串行处理用户请求、Cron prompt、团队和后台结果。CLI 采用单一输入读取线程，空闲时每半秒检查事件并唤醒模型；审批回复也从同一输入队列消费，避免多个线程竞争终端。所有 shell 调用都要求确认，只有 `--allow-command` 明确授权的完全相同命令可在异步轮次执行；硬拒绝优先。非交互事件与队友不会读终端。Cron 在首次模型成功响应后 ack，失败保留待交付状态。`--task` 单次模式不审批，退出关闭运行时。提示组装、记忆提取和整理、动态工具池与可恢复上下文在统一模型循环中工作。
+
 ## s14 MCP
 
 实现真实 stdio JSON-RPC：initialize、initialized、分页 tools/list、tools/call、超时和进程清理。通过 CLI `--mcp-config` 显式提供宿主 JSON 配置，格式为 `{ "docs": { "command": ["python", "server.py"], "allow_tools": ["search"] } }`。连接启动本地程序需确认；已发现工具统一命名 mcp__server__tool，拒绝名称碰撞与长度超限。allow_tools 是宿主精确授权名单，其他外部工具确认，服务端 hint 不决定权限。当前不支持 HTTP、采样、资源订阅等完整 MCP 能力。传输实现参考官方规范 https://modelcontextprotocol.io/specification/2025-11-25/basic/transports。

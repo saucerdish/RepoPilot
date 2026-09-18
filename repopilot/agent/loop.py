@@ -12,6 +12,8 @@ class Agent:
         self.context = context
         self.max_turns = max_turns
         self.event_sources = []
+        self.after_model = None
+        self.interactive = False
 
     def run(self, messages: list, active_request=None):
         active_request = active_request or next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
@@ -31,6 +33,9 @@ class Agent:
                     raise
                 self.context.compact(messages, active_request, keep=5)
                 response = self.llm.chat(messages, self.registry.schemas())
+            if self.after_model:
+                self.after_model()
+                self.after_model = None
             messages.append(response.model_dump(exclude_none=True))
             tool_calls = response.tool_calls or []
             if not tool_calls:
@@ -60,7 +65,7 @@ class Agent:
                             self.hooks.trigger("PostToolUse", name, args, result)
                         else:
                             result = f"Error: unknown tool {name}"
-                except (ValueError, TypeError) as exc:
+                except Exception as exc:
                     result = f"Error: invalid tool call: {exc}"
                 print(f"> {name}: {result[:200]}")
                 results.append({"role": "tool", "tool_call_id": block.id, "content": result})
