@@ -9,10 +9,13 @@ class HookManager:
     def __init__(self):
         self._callbacks: dict[str, list[Callable]] = {event: [] for event in self.EVENTS}
 
-    def register(self, event: str, callback: Callable) -> None:
+    def register(self, event: str, callback: Callable, first=False) -> None:
         if event not in self._callbacks:
             raise ValueError(f"Unknown hook event: {event}")
-        self._callbacks[event].append(callback)
+        if first:
+            self._callbacks[event].insert(0, callback)
+        else:
+            self._callbacks[event].append(callback)
 
     def trigger(self, event: str, *args):
         if event not in self._callbacks:

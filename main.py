@@ -20,17 +20,19 @@ from repopilot.runtime.memory import MemoryStore
 from repopilot.runtime.tasks import TaskStore
 from repopilot.runtime.background import BackgroundManager
 from repopilot.runtime.scheduler import Scheduler
+from repopilot.runtime.teams import TeamManager
 from repopilot.tools.service import ServiceTool
 
 
-def build_agent(workspace: Path, child=False, llm=None) -> Agent:
+def build_agent(workspace: Path, child=False, llm=None, owner="lead", state_workspace=None) -> Agent:
+    state_workspace = state_workspace or workspace
     registry = ToolRegistry()
     background = BackgroundManager()
     for tool in (BashTool, ReadFileTool, WriteFileTool, EditFileTool, GlobTool):
         registry.register(tool(workspace))
     registry.register(BashTool(workspace, background))
     hooks = HookManager()
-    hooks.register("PreToolUse", PermissionHook(workspace))
+    hooks.register("PreToolUse", PermissionHook(workspace, ask=(lambda *args: False) if owner != "lead" else None))
     hooks.register("PostToolUse", lambda name, args, output: print(f"[hook] Large output from {name}") if len(output) > 100_000 else None)
     todo = TodoTool()
     skills = SkillLoader(workspace)
@@ -45,9 +47,9 @@ def build_agent(workspace: Path, child=False, llm=None) -> Agent:
     else:
         registry.register(TaskTool(lambda: build_agent(workspace, child=True)))
     context = ContextManager(workspace, llm.summarize, todo.render)
-    memory = MemoryStore(workspace)
-    tasks = TaskStore(workspace)
-    for tool in tasks.tools():
+    memory = MemoryStore(state_workspace)
+    tasks = TaskStore(state_workspace)
+    for tool in tasks.tools(owner=owner, worker=owner != "lead"):
         registry.register(tool)
     scheduler = Scheduler(workspace)
     if not child:
@@ -62,6 +64,14 @@ def build_agent(workspace: Path, child=False, llm=None) -> Agent:
     agent.background = background
     agent.scheduler = scheduler
     agent.event_sources.append(background.collect)
+    if not child:
+        teams = TeamManager(workspace, tasks, lambda cwd, name: build_agent(cwd, child=True, owner=name, state_workspace=workspace))
+        for tool in teams.tools():
+            registry.register(tool)
+        agent.teams = teams
+        agent.event_sources.append(lambda: teams.bus.drain("lead"))
+    if owner != "lead":
+        llm.system_prompt += f"\nYour host identity is {owner}. Complete your assigned task using complete_task with its exact ID, only after validation."
     return agent
 
 
@@ -102,6 +112,7 @@ def main() -> None:
             print(f"Memory extraction skipped: {type(exc).__name__}")
         print()
     agent.background.close()
+    agent.teams.close()
 
 
 if __name__ == "__main__":

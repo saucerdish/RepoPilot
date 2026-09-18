@@ -17,4 +17,8 @@ class TaskTool(Tool):
         if not prompt.strip():
             return "Error: task prompt must not be empty"
         agent = self.factory()
-        return agent.run([{"role": "user", "content": prompt}], prompt) or "(no summary)"
+        try:
+            return agent.run([{"role": "user", "content": prompt}], prompt) or "(no summary)"
+        finally:
+            if hasattr(agent, "background"):
+                agent.background.close()

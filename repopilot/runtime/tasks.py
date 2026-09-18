@@ -65,6 +65,9 @@ class TaskStore:
             record = self._load(conn, task_id)
             if record["status"] != "pending" or not owner.strip():
                 raise ValueError("Task is not claimable")
+            active = [json.loads(row["record"]) for row in conn.execute("SELECT record FROM tasks")]
+            if any(t["owner"] == owner and t["status"] == "in_progress" for t in active):
+                raise ValueError("Owner already has an active task")
             if any(self._load(conn, dep)["status"] != "completed" for dep in record["blockedBy"]):
                 raise ValueError("Task has incomplete dependencies")
             record.update(status="in_progress", owner=owner)
