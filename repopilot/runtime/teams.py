@@ -3,6 +3,7 @@ import re
 import subprocess
 import threading
 import uuid
+from contextvars import copy_context
 from pathlib import Path
 
 from .storage import Database
@@ -67,7 +68,7 @@ class TeamManager:
                      "version": 1, "gate": "required" if require_plan else "not_required", "require_plan": require_plan,
                      "history": [], "stop": threading.Event(), "wake": threading.Event(), "agent": None}
             self.members[name] = state
-            thread = threading.Thread(target=self._worker, args=(state,), daemon=True)
+            thread = threading.Thread(target=copy_context().run, args=(self._worker, state), daemon=True)
             state["thread"] = thread
             thread.start()
         return {"name": name, "status": state["status"]}

@@ -80,6 +80,10 @@ MCP 通过**宿主显式提供**的 JSON 文件配置，使用 `--mcp-config pat
 
 ## 测试与 Agent Evaluation
 
+更完整的四项仓库任务测试使用 `python -m repopilot.benchmark --output-root D:/学习/RepoPilot-agent-tests`。它保留独立仓库、对话、补丁和外部验收结果，统计 Goal 误报、耗时、API 调用与 Token；详见 [性能测试说明](docs/benchmark.md)。
+
+2026-09-18 首次实测：功能验收 4/4，完整自主任务 3/4，本地自动化测试 42/42。失败、耗时与适用范围见 [实测记录](docs/benchmark-results.md)。
+
 ```powershell
 python -m unittest discover -s tests -v
 python -m repopilot.evaluation --mode demo
