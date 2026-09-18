@@ -17,6 +17,7 @@ from repopilot.tools.planning import TodoTool, CompactTool
 from repopilot.tools.skills import SkillLoader
 from repopilot.tools.task import TaskTool
 from repopilot.runtime.memory import MemoryStore
+from repopilot.runtime.tasks import TaskStore
 from repopilot.tools.service import ServiceTool
 
 
@@ -41,11 +42,15 @@ def build_agent(workspace: Path, child=False, llm=None) -> Agent:
         registry.register(TaskTool(lambda: build_agent(workspace, child=True)))
     context = ContextManager(workspace, llm.summarize, todo.render)
     memory = MemoryStore(workspace)
+    tasks = TaskStore(workspace)
+    for tool in tasks.tools():
+        registry.register(tool)
     registry.register(ServiceTool("recall_memory", "Recall relevant persistent repository memories.", memory.recall, {"query": {"type": "string"}}, ["query"]))
     registry.register(ServiceTool("save_memory", "Save explicit reusable knowledge, never temporary task instructions.", memory.save,
                                  {k: {"type": "string"} for k in ("name", "type", "description", "body", "scope")}, ["name", "type", "description", "body", "scope"]))
     agent = Agent(llm, registry, hooks, context, max_turns=30 if child else 100)
     agent.memory = memory
+    agent.tasks = tasks
     return agent
 
 
