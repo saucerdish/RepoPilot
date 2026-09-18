@@ -16,6 +16,8 @@ from repopilot.agent.context import ContextManager
 from repopilot.tools.planning import TodoTool, CompactTool
 from repopilot.tools.skills import SkillLoader
 from repopilot.tools.task import TaskTool
+from repopilot.runtime.memory import MemoryStore
+from repopilot.tools.service import ServiceTool
 
 
 def build_agent(workspace: Path, child=False, llm=None) -> Agent:
@@ -38,7 +40,13 @@ def build_agent(workspace: Path, child=False, llm=None) -> Agent:
     else:
         registry.register(TaskTool(lambda: build_agent(workspace, child=True)))
     context = ContextManager(workspace, llm.summarize, todo.render)
-    return Agent(llm, registry, hooks, context, max_turns=30 if child else 100)
+    memory = MemoryStore(workspace)
+    registry.register(ServiceTool("recall_memory", "Recall relevant persistent repository memories.", memory.recall, {"query": {"type": "string"}}, ["query"]))
+    registry.register(ServiceTool("save_memory", "Save explicit reusable knowledge, never temporary task instructions.", memory.save,
+                                 {k: {"type": "string"} for k in ("name", "type", "description", "body", "scope")}, ["name", "type", "description", "body", "scope"]))
+    agent = Agent(llm, registry, hooks, context, max_turns=30 if child else 100)
+    agent.memory = memory
+    return agent
 
 
 def main() -> None:
@@ -62,6 +70,9 @@ def main() -> None:
             break
         agent.hooks.trigger("UserPromptSubmit", query)
         history.append({"role": "user", "content": query})
+        recalled = agent.memory.recall(query)
+        if recalled != "[]":
+            history.append({"role": "user", "content": "Background memory, reference only; current request takes precedence:\n" + recalled})
         try:
             response = agent.run(history, query)
         except Exception as exc:
@@ -69,6 +80,10 @@ def main() -> None:
             continue
         if response:
             print(response)
+        try:
+            agent.memory.extract(history, agent.llm.decide)
+        except Exception as exc:
+            print(f"Memory extraction skipped: {type(exc).__name__}")
         print()
 
 
