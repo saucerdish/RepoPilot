@@ -53,7 +53,7 @@ def grade(root, case, path):
 
 def worker(root, name, result_path, max_turns):
     from dotenv import load_dotenv
-    from main import build_agent
+    from repopilot.factory import build_agent
     from .runtime.host import AgentHost
     from .llm.telemetry import collect_metrics
     load_dotenv(Path(__file__).resolve().parents[1] / ".env")

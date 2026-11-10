@@ -1,6 +1,10 @@
 """Workspace-scoped file tools for repository tasks."""
 
+import os
+import re
+import time
 from pathlib import Path
+
 from .base import Tool
 
 class WorkspaceTool(Tool):
@@ -96,9 +100,49 @@ class EditFileTool(WorkspaceTool):
             return f"Error: {exc}"
 
 
+# Directories that are never worth searching and can hold huge trees.
+SKIP_DIRS = {".git", ".repopilot", "node_modules", "__pycache__", ".venv", "venv", ".tox",
+             ".mypy_cache", ".pytest_cache", ".ruff_cache", ".cache", ".ipynb_checkpoints"}
+MAX_MATCHES = 200
+TIME_BUDGET = 10.0
+
+
+def glob_regex(pattern):
+    """Translate a glob with ** into a regex over slash-separated paths."""
+    out, index = [], 0
+    while index < len(pattern):
+        if pattern.startswith("**/", index):
+            out.append("(?:.*/)?")
+            index += 3
+        elif pattern.startswith("**", index):
+            out.append(".*")
+            index += 2
+        elif pattern[index] == "*":
+            out.append("[^/]*")
+            index += 1
+        elif pattern[index] == "?":
+            out.append("[^/]")
+            index += 1
+        elif pattern[index] == "[" and "]" in pattern[index + 1:]:
+            close = pattern.index("]", index + 1)
+            body = pattern[index + 1:close]
+            out.append("[" + ("^" + body[1:] if body.startswith("!") else body) + "]")
+            index = close + 1
+        else:
+            out.append(re.escape(pattern[index]))
+            index += 1
+    return re.compile("".join(out) + r"\Z")
+
+
 class GlobTool(WorkspaceTool):
     name = "glob"
-    description = "Find repository files by glob pattern; ** searches recursively."
+    description = ("Find repository files by glob pattern; ** searches recursively. "
+                   f"Skips dependency/cache directories and stops after {MAX_MATCHES} matches "
+                   f"or {TIME_BUDGET:.0f}s, so prefer a directory prefix such as docs/**/*.md.")
+
+    def __init__(self, workspace: Path, cancellation=None):
+        super().__init__(workspace)
+        self.cancellation = cancellation
 
     def schema(self):
         schema = super().schema()
@@ -110,15 +154,41 @@ class GlobTool(WorkspaceTool):
 
     def run(self, pattern: str) -> str:
         try:
-            matches = sorted({
-                str(path.relative_to(self.workspace))
-                for path in self.workspace.glob(pattern)
-                if path.is_file() and path.resolve().is_relative_to(self.workspace)
-                and ".git" not in path.relative_to(self.workspace).parts
-            })
-            shown = matches[:200]
-            if len(matches) > 200:
-                shown.append("... (more matches omitted; narrow the pattern)")
+            pattern = pattern.strip().removeprefix("./")
+            if not pattern or Path(pattern).is_absolute() or ".." in Path(pattern).parts:
+                return "Error: pattern must be relative to the repository"
+            # Walk only below the literal prefix (e.g. docs/ in docs/**/*.md);
+            # Path.glob walks everything and cannot be stopped midway.
+            parts = pattern.split("/")
+            fixed = []
+            for part in parts[:-1]:
+                if any(char in part for char in "*?["):
+                    break
+                fixed.append(part)
+            root = self.safe_path("/".join(fixed)) if fixed else self.workspace
+            if not root.is_dir():
+                return "(no matches)"
+            matcher = glob_regex(pattern)
+            deadline = time.monotonic() + TIME_BUDGET
+            matches, stopped = [], None
+            for directory, dirnames, filenames in os.walk(root):
+                dirnames[:] = sorted(name for name in dirnames if name not in SKIP_DIRS)
+                base = Path(directory).relative_to(self.workspace).as_posix()
+                for name in sorted(filenames):
+                    relative = name if base == "." else f"{base}/{name}"
+                    if matcher.match(relative):
+                        matches.append(relative)
+                if len(matches) >= MAX_MATCHES:
+                    stopped = f"stopped after {MAX_MATCHES} matches"
+                elif self.cancellation is not None and self.cancellation.is_set():
+                    stopped = "cancelled"
+                elif time.monotonic() > deadline:
+                    stopped = f"stopped after {TIME_BUDGET:.0f}s"
+                if stopped:
+                    break
+            shown = sorted(matches)[:MAX_MATCHES]
+            if stopped:
+                shown.append(f"... ({stopped}; results may be incomplete — narrow the pattern, e.g. docs/**/*.md)")
             return "\n".join(shown) if shown else "(no matches)"
         except (OSError, ValueError) as exc:
             return f"Error: {exc}"

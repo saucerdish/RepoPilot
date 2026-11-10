@@ -2,3 +2,4 @@ openai
 python-dotenv
 pydantic
 rich
+prompt-toolkit>=3.0.43,<4

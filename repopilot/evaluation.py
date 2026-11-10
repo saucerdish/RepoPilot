@@ -57,7 +57,7 @@ class DemoLLM:
 
 
 def evaluate(mode="demo", output=None, selected=None):
-    from main import build_agent
+    from repopilot.factory import build_agent
     from repopilot.runtime.host import AgentHost
     report = {"mode": mode, "description": "Scripted harness check; not model performance" if mode == "demo" else "Live model on three small generated Git tasks; not a broad benchmark", "cases": []}
     for case in CASES:
