@@ -2,7 +2,7 @@
 
 ## 首次使用
 
-在项目目录创建 .venv 并安装 requirements.txt，再配置 .env。Windows 使用 `.venv/Scripts/python.exe`，Linux 使用 `.venv/bin/python`。`main.py --help` 和离线测试无需模型依赖；真正运行 Agent 需要 openai 与 python-dotenv。测试必须从项目根目录运行。
+在项目目录创建 .venv 并使用 `python -m pip install -e .` 安装客户端和依赖，再配置 .env。Windows 使用 `.venv/Scripts/repopilot.exe`，Linux 使用 `.venv/bin/repopilot`。`repopilot --demo` 可以无密钥预览界面，完整输入与命令见 [CLI 使用说明](cli.md)。无密钥测试使用注入模型，不访问真实模型 API；测试必须从项目根目录运行。
 
 ## 典型任务
 

@@ -34,6 +34,16 @@ class HookManagerTest(unittest.TestCase):
             permission.ask = lambda *args: True
             self.assertIsNone(permission("bash", {"command": "DEL a.txt"}))
 
+    def test_shell_approval_reason_matches_risk(self):
+        with tempfile.TemporaryDirectory() as directory:
+            asked = []
+            permission = PermissionHook(Path(directory), ask=lambda *args: asked.append(args[2]) or True,
+                                        confirm_shell=True)
+            permission("bash", {"command": "pytest -q"})
+            permission("bash", {"command": "rm build.log"})
+            self.assertEqual(asked, ["shell commands need approval in manual mode",
+                                     "potentially destructive shell command"])
+
     def test_pre_and_post_hooks_in_agent(self):
         class FakeLLM:
             def __init__(self):

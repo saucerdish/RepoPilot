@@ -3,6 +3,8 @@
 import json
 import threading
 
+from repopilot.llm.cancellation import RequestCancelled
+
 
 class AgentHost:
     def __init__(self, agent):
@@ -32,7 +34,7 @@ class AgentHost:
             self.agent.after_model = ack
             try:
                 result = self.agent.run(self.history, self.active_request)
-                if interactive:
+                if interactive and not self.agent.cancelled():
                     try:
                         self.agent.memory.extract(self.history, self.agent.llm.decide)
                         records = self.agent.memory.records()
@@ -40,8 +42,14 @@ class AgentHost:
                             merged = self.agent.llm.decide("Consolidate duplicate stable memories without introducing facts. Return {records:[{name,type,description,body}]}; preserve distinct records.", json.dumps(records))
                             if merged.get("records"):
                                 self.agent.memory.consolidate(merged["records"])
+                    except RequestCancelled:
+                        return "Interrupted. Changes already made have been preserved."
                     except Exception as exc:
-                        print(f"Memory maintenance skipped: {type(exc).__name__}")
+                        message = f"Memory maintenance skipped: {type(exc).__name__}"
+                        if self.agent.events:
+                            self.agent.emit("notice", content=message)
+                        else:
+                            print(message)
                 return result
             finally:
                 self.agent.after_model = None

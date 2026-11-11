@@ -1,33 +1,74 @@
+![RepoPilot](assets/brand/logo.svg)
+
 # RepoPilot
 
 面向真实 Git 仓库的软件工程 Agent 学习项目。基于 *learn-claude-code* s01–s17 的机制，构建从仓库理解、任务规划、代码修改到测试反馈与目标判断的执行闭环。它是可运行、可测试的学习型 Harness，尚不是隔离完善的生产环境执行平台。
 
 ## 快速开始
 
-需要 Python 3.10+ 和 Git。推荐建立隔离环境：
+需要 Python 3.10+ 和 Git。提供带输入历史、命令补全、工具时间线、差异预览和权限确认的终端客户端。推荐建立隔离环境：
 
-```powershell
-python -m venv .venv
-.venv/Scripts/python.exe -m pip install -r requirements.txt
-Copy-Item .env.example .env
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e .
+cp .env.example .env
 ```
 
 填写 `.env` 中的 `OPENAI_API_KEY`、`MODEL_ID`，可选 `OPENAI_BASE_URL`。采用 OpenAI-compatible Chat Completions，模型应支持工具调用和 JSON 对象输出。请求有 60 秒默认超时、有限重试，可设置备用模型。现有环境变量优先于 `.env`。
 
-```powershell
-.venv/Scripts/python.exe main.py D:/path/to/repository
-# 或在项目根目录使用 python -m repopilot
+```bash
+repopilot /path/to/repository
+# 也可在项目根目录使用 python main.py 或 python -m repopilot
+
+# 使用指定模型和现有配置，不修改 .env
+repopilot /path/to/repository --env-file /path/to/.env \
+  --base-url https://api.360.cn/v1 \
+  --model deepseek/deepseek/deepseek-v4.1-flash
+
+# 无需 API 密钥即可查看离线界面演示
+repopilot --demo
+
+# 按终端底色选择主题（默认 auto）
+repopilot --theme light
+repopilot --theme dark
+
+# 权限模式：manual 需要审批（默认），auto 无需审批
+repopilot --mode manual
+repopilot --mode auto
 ```
 
-目标必须是 Git 仓库。省略路径使用当前目录；输入任务开始工作，`q` 退出。所有 shell 调用默认需要确认，审批只回答 `y` 或 `yes` 才放行。只有前台用户轮次可以确认；队友、定时任务和后台事件轮次默认拒绝需确认的工具。
+目标必须是 Git 仓库。省略路径使用当前目录；输入任务开始工作，`/help` 查看命令，`/exit` 或 `Ctrl+D` 退出。`/model` 切换模型，`/diff` 查看改动，`/status` 查看用量与当前模式。`manual` 模式下 Shell 等受保护操作需要确认，审批时 `y` 放行一次、`a` 在本会话内放行同类操作（破坏性命令仍逐条询问）、`n` 拒绝；只有前台终端轮次可以确认，其余轮次默认拒绝需确认的工具。`auto` 模式自动批准受保护操作，并传递给子任务、工作流和队友；原有禁用命令与仓库路径边界继续生效。会话内用 `/mode manual`、`/mode auto` 切换。Windows 安装与完整快捷键见 [CLI 使用说明](docs/cli.md)。
 
-单次执行或异步执行需要提前授权**完全相同**的命令：
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/brand/client-dark.svg">
+  <img alt="RepoPilot 终端首屏" src="assets/brand/client-light.svg">
+</picture>
+
+`manual` 模式下，单次执行或异步执行需要提前授权**完全相同**的命令；也可通过 `--mode auto` 自动批准：
 
 ```powershell
 .venv/Scripts/python.exe main.py . --task "运行项目测试并报告结果" --allow-command "python -m unittest discover -s tests -v"
 ```
 
 `--task` 结束后立即关闭运行时，不等待未来的定时任务。交互模式会在空闲时自动接收后台与团队事件并触发下一轮。退出会停止队友和受管理的 shell 进程。
+
+## 界面预览
+
+一轮完整对话（`repopilot --demo` 离线演示，不调用模型；浅色 / 深色主题）：
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/brand/terminal-preview-dark.svg">
+  <img alt="RepoPilot 一轮对话：工具摘要、计划、diff、审批卡、终端窗口与回答" src="assets/brand/terminal-preview.svg">
+</picture>
+
+- **工具调用一行一条**：`● Read  module.py · 2 lines`，连续的读取与搜索排成列表；等待时显示带流光与计时的 `Thinking…  12s`。
+- **代码改动**：带文件行号的 diff，新增行绿底、删除行红底，改写的单词再加深标出。
+- **终端窗口**：Agent 执行的命令与用户以 `!` 输入的命令都显示为浅灰终端窗口，标题栏带退出码与耗时，失败时变红。
+- **紧凑授权卡**：说明原因与可选按键，回答后只留一行结果；`a` 在本会话内放行普通 Shell 命令。
+- **回答**：标题左对齐，代码块、表格与行内代码使用主题底色；超过 30 秒的任务结束时响铃并发送桌面通知。
+
+截图由 `python scripts/render_screenshots.py` 生成。
 
 ## 按验收条件持续工作
 

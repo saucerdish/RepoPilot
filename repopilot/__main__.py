@@ -1,4 +1,4 @@
-from main import main
+from repopilot.cli.app import main
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

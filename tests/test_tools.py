@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -67,6 +68,33 @@ class AgentDispatchTest(unittest.TestCase):
             self.assertEqual(messages[3]["content"], "ok")
             self.assertIn("unknown tool", messages[4]["content"])
             self.assertEqual(completed, ["write_file", "read_file"])
+
+
+class GlobBoundsTests(unittest.TestCase):
+    def test_glob_skips_heavy_dirs_caps_matches_and_honours_cancellation(self):
+        import threading
+        from repopilot.tools import files
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "node_modules" / "pkg").mkdir(parents=True)
+            (root / "node_modules" / "pkg" / "README.md").write_text("x")
+            (root / "docs" / "deep").mkdir(parents=True)
+            (root / "docs" / "deep" / "a.md").write_text("x")
+            (root / "top.md").write_text("x")
+            tool = GlobTool(root)
+            self.assertEqual(tool.run("**/*.md").splitlines(), ["docs/deep/a.md", "top.md"])
+            self.assertEqual(tool.run("docs/**/*.md"), "docs/deep/a.md")
+            self.assertEqual(tool.run("./*.md"), "top.md")
+            self.assertIn("relative", tool.run("../*.md"))
+            for n in range(5):
+                (root / f"f{n}.txt").write_text("x")
+            with unittest.mock.patch.object(files, "MAX_MATCHES", 3):
+                result = tool.run("*.txt").splitlines()
+            self.assertEqual(len(result), 4)
+            self.assertIn("stopped after 3 matches", result[-1])
+            cancelled = threading.Event()
+            cancelled.set()
+            self.assertIn("cancelled", GlobTool(root, cancellation=cancelled).run("**/*.md"))
 
 
 if __name__ == "__main__":
