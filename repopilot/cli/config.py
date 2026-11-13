@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 def settings_path():
-    root = Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config")))
+    root = Path(os.environ["XDG_CONFIG_HOME"]) if os.environ.get("XDG_CONFIG_HOME") else Path.home() / ".config"
     return root / "repopilot" / "config.json"
 
 

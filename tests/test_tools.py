@@ -23,7 +23,7 @@ class FileToolsTest(unittest.TestCase):
             self.assertEqual(read.run("src/a.py", limit=1), "hello\n... (1 more lines)")
             self.assertEqual(edit.run("src/a.py", "world", "repo"), "Edited src/a.py")
             self.assertEqual(read.run("src/a.py"), "hello\nrepo")
-            self.assertEqual(glob.run("**/*.py"), str(Path("src/a.py")))
+            self.assertEqual(glob.run("**/*.py"), Path("src/a.py").as_posix())
 
     def test_escape_and_ambiguous_edit_are_rejected(self):
         with tempfile.TemporaryDirectory() as directory:

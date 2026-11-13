@@ -44,7 +44,8 @@ class ThemeTests(unittest.TestCase):
                 rows = icon.plain.split("\n")
                 self.assertEqual(len(rows), len(ICON_PIXELS) // 2)
                 self.assertTrue(all(len(row) == ICON_WIDTH for row in rows))
-                Console(file=open(os.devnull, "w"), force_terminal=True).print(icon)
+                with open(os.devnull, "w", encoding="utf-8") as sink:
+                    Console(file=sink, force_terminal=True).print(icon)
         self.assertNotIn("bright_blue", str(icon_mark(None).spans))
 
     def test_known_background_and_explicit_selection(self):
